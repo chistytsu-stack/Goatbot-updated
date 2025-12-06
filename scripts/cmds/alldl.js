@@ -5,7 +5,7 @@ const { promisify } = require('util');
 const stream = require('stream');
 
 const pipeline = promisify(stream.pipeline);
-const API_BASE_URL = "https://neoaz.is-a.dev/api/alldl"; 
+const API_BASE_URL = "https://neokex-dl-apis.fly.dev/api/download";
 const CACHE_DIR = path.join(__dirname, 'cache');
 
 async function download({ videoUrl, message, event }) {
@@ -15,24 +15,20 @@ async function download({ videoUrl, message, event }) {
   
   try {
     message.reaction("⏳", event.messageID);
+    
     const apiResponse = await axios.get(apiUrl, { timeout: 30000 });
     const videoData = apiResponse.data;
 
-    if (!videoData || !videoData.cdnUrl) {
-      throw new Error("Invalid response or missing CDN URL from API.");
+    if (!videoData || !videoData.success || !videoData.videoStream) {
+      throw new Error("Invalid response or missing video stream URL from API.");
     }
     
-    let title = 'Video Download';
-    let platform = 'Unknown Source';
+    let title = videoData.title || 'Video Download';
+    let platform = videoData.platform || 'Unknown Source';
 
-    if (videoData.data) {
-        title = videoData.data.title || title;
-        platform = videoData.data.source || platform;
-    }
+    const videoStreamUrl = videoData.videoStream; 
 
-    const cdnUrl = videoData.cdnUrl;
-
-    const videoStreamResponse = await axios.get(cdnUrl, {
+    const videoStreamResponse = await axios.get(videoStreamUrl, {
       responseType: 'stream',
       timeout: 120000 
     });
@@ -53,7 +49,7 @@ async function download({ videoUrl, message, event }) {
     });
 
     await message.reply({
-      body: `Video downloaded ✨\nTitle: ${title}\nPlatform: ${platform}`,
+      body: `Video Downloaded! ✨\n\nTitle: ${title}\nPlatform: ${platform}`,
       attachment: fs.createReadStream(tempFilePath)
     });
     
@@ -61,8 +57,6 @@ async function download({ videoUrl, message, event }) {
 
   } catch (error) {
     message.reaction("❌", event.messageID);
-    
-    console.error("Download Error:", error.message || error);
     
   } finally {
     if (tempFilePath && fs.existsSync(tempFilePath)) {
@@ -75,8 +69,8 @@ module.exports = {
   config: {
     name: "alldl",
     aliases: ["download", "dl", "instadl", "fbdl", "xdl", "tikdl"],
-    version: "2.4", 
-    author: "NeoKEX", 
+    version: "2.5",
+    author: "Neoaz ゐ", 
     countDown: 5,
     role: 0,
     longDescription: "Download Videos from various Sources and toggle auto-download.",
@@ -110,7 +104,8 @@ module.exports = {
     }
 
     if (!videoUrl || !videoUrl.match(urlRegex)) {
-      return message.reply("No valid URL found. Please provide a video link or reply to a message containing one.");
+      message.reaction("❌", event.messageID);
+      return;
     }
 
     message.reaction("⏳", event.messageID);
@@ -131,7 +126,6 @@ module.exports = {
         await download({ videoUrl, message, event });
       }
     } catch (error) {
-      console.error("onChat Auto-Download Error:", error);
     }
   }
 };
